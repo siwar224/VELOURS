@@ -102,7 +102,7 @@ export const collection = {
   title: "Three ways to bloom",
   products: [
     {
-      name: "Rose Éclose",
+      name: "Rose Velours",
       descriptor: "Damask rose, pink pepper, white musk",
       size: "50 ml",
       price: "€120",
