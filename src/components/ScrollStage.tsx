@@ -1,7 +1,16 @@
+"use client";
+
 import Image from "next/image";
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { stage } from "@/content/site";
+import framesJson from "@/data/frames.json";
+import { FRAMES, SCROLL_VH, frameTime } from "@/lib/beats";
+import { gsap, MOTION_QUERY } from "@/lib/gsap";
+import { createLenis } from "@/lib/lenis";
+import { CanvasSequence, type CanvasSequenceHandle, type FrameSet } from "./CanvasSequence";
 import { frameSrc } from "./FrameCrop";
+
+const desktopSet: FrameSet = framesJson;
 
 type Side = "left" | "right";
 
@@ -40,15 +49,62 @@ function BeatHeading({ label, title, text }: { label: string; title: string; tex
   );
 }
 
-// Block (a): static layout only. The pinned canvas and the scrubbed timeline replace the poster
-// and drive the beat opacities in blocks (b) and (c).
 export function ScrollStage() {
   const { intro, bloom, heart, trail, finish } = stage;
+  const rootRef = useRef<HTMLElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const mediaRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<CanvasSequenceHandle>(null);
+  const frameSet = desktopSet;
+  const count = frameSet.count;
+
+  useEffect(() => {
+    // gsap.matchMedia is a gsap.context per media condition: everything created inside
+    // (tweens, ScrollTriggers, pins) is reverted on cleanup, which keeps Strict Mode safe.
+    const mm = gsap.matchMedia(rootRef);
+
+    mm.add({ motion: MOTION_QUERY, mobile: "(max-width: 768px)" }, (context) => {
+      const { motion, mobile } = context.conditions as { motion: boolean; mobile: boolean };
+      if (!motion) return;
+
+      const { destroy } = createLenis();
+
+      // The timeline is measured in frames: 1 unit of duration = 1 frame of footage.
+      // ScrollTrigger maps the whole timeline onto the pinned scroll distance.
+      const last = count - 1;
+      const at = (frame: number) => frameTime(frame, count);
+      const state = { frame: 0 };
+
+      const tl = gsap.timeline({
+        defaults: { ease: "none" },
+        scrollTrigger: {
+          trigger: viewportRef.current,
+          start: "top top",
+          end: () => `+=${window.innerHeight * (mobile ? SCROLL_VH.mobile : SCROLL_VH.desktop)}`,
+          pin: true,
+          scrub: 0.5,
+          anticipatePin: 1,
+          invalidateOnRefresh: true,
+          refreshPriority: 1, // measure the pin first: every section below depends on its spacing
+        },
+      });
+
+      (Object.keys(FRAMES) as (keyof typeof FRAMES)[]).forEach((name) => tl.addLabel(name, at(FRAMES[name])));
+
+      // Frame index: a plain object tweened linearly; the canvas only redraws on a new integer.
+      tl.to(state, { frame: last, duration: last, onUpdate: () => canvasRef.current?.setFrame(state.frame) }, 0);
+
+      return () => destroy();
+    });
+
+    return () => mm.revert();
+  }, [count]);
+
   return (
-    <section id="top" aria-labelledby="stage-title" className="relative h-svh">
-      <div className="sticky top-0 h-svh overflow-hidden bg-prune">
-        {/* LCP poster: first frame, cover-fit around the centre so the bottle stays visible. */}
-        <div className="absolute inset-0">
+    <section id="top" ref={rootRef} aria-labelledby="stage-title" className="relative">
+      <div ref={viewportRef} className="relative h-svh overflow-hidden bg-prune">
+        <div ref={mediaRef} className="absolute inset-0">
+          {/* LCP poster: first frame, cover-fit around the centre like the canvas. */}
           <Image
             src={frameSrc(1)}
             alt=""
@@ -59,6 +115,7 @@ export function ScrollStage() {
             sizes="100vw"
             className="object-cover object-center"
           />
+          <CanvasSequence ref={canvasRef} set={frameSet} className="absolute inset-0 h-full w-full" />
         </div>
         <p className="sr-only">{stage.srDescription}</p>
 

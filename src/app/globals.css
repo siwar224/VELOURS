@@ -115,3 +115,18 @@ body {
   opacity: 0.09;
   mix-blend-mode: overlay;
 }
+
+/* Lenis recommended base styles (scroll lock while stopped, nested scroll areas). */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis:not(.lenis-autoToggle).lenis-stopped {
+  overflow: clip;
+}
+.lenis [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+.lenis.lenis-smooth iframe {
+  pointer-events: none;
+}
