@@ -9,11 +9,12 @@ type PreloaderProps = {
 };
 
 // A thin champagne line along the top edge. The poster frame stays visible underneath (it is the LCP).
+// Always mounted (never conditionally inserted next to the GSAP-pinned stage); hidden under reduced motion.
 export function Preloader({ progress, done }: PreloaderProps) {
   const percent = Math.round(Math.min(1, progress) * 100);
   return (
     <div
-      className={`pointer-events-none fixed inset-x-0 top-0 z-[70] transition-opacity duration-700 ${done ? "opacity-0" : "opacity-100"}`}
+      className={`pointer-events-none fixed inset-x-0 top-0 z-[70] transition-opacity duration-700 motion-reduce:hidden ${done ? "opacity-0" : "opacity-100"}`}
       aria-hidden={done}
     >
       <div

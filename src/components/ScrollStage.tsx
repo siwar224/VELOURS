@@ -248,91 +248,96 @@ export function ScrollStage() {
 
   return (
     <section id="top" ref={rootRef} aria-labelledby="stage-title" className="relative">
-      {motionOk && <Preloader progress={progress} done={ready} />}
+      <Preloader progress={progress} done={ready} />
 
-      <div ref={viewportRef} className="relative overflow-hidden bg-prune motion-safe:h-svh">
-        {/* Hero: always exactly one viewport tall. */}
-        <div className="relative h-svh">
-          <div ref={mediaRef} className="absolute inset-0">
-            {/* LCP poster (first frame), swapped for the clean-bottle frame under reduced motion.
-                Same cover fit and centre focal point as the canvas, so the hand-over is invisible. */}
-            <picture>
-              <source media="(prefers-reduced-motion: reduce)" srcSet={frameSrc(STATIC_FRAME)} />
-              <img
-                src={frameSrc(1)}
-                alt=""
-                width={1920}
-                height={1080}
-                fetchPriority="high"
-                decoding="async"
-                className="absolute inset-0 h-full w-full object-cover object-center"
-              />
-            </picture>
-            {motionOk && (
-              <CanvasSequence
-                ref={canvasRef}
-                set={frameSet}
-                onProgress={onProgress}
-                className="absolute inset-0 h-full w-full"
-              />
-            )}
+      {/* Stable wrapper: ScrollTrigger wraps the pinned div in a "pin-spacer" element React does
+          not know about. Keeping the pinned div as the only child of a plain wrapper means React
+          never has to insert a sibling next to a node GSAP has moved. */}
+      <div>
+        <div ref={viewportRef} className="relative overflow-hidden bg-prune motion-safe:h-svh">
+          {/* Hero: always exactly one viewport tall. */}
+          <div className="relative h-svh">
+            <div ref={mediaRef} className="absolute inset-0">
+              {/* LCP poster (first frame), swapped for the clean-bottle frame under reduced motion.
+                  Same cover fit and centre focal point as the canvas, so the hand-over is invisible. */}
+              <picture>
+                <source media="(prefers-reduced-motion: reduce)" srcSet={frameSrc(STATIC_FRAME)} />
+                <img
+                  src={frameSrc(1)}
+                  alt=""
+                  width={1920}
+                  height={1080}
+                  fetchPriority="high"
+                  decoding="async"
+                  className="absolute inset-0 h-full w-full object-cover object-center"
+                />
+              </picture>
+              {motionOk && (
+                <CanvasSequence
+                  ref={canvasRef}
+                  set={frameSet}
+                  onProgress={onProgress}
+                  className="absolute inset-0 h-full w-full"
+                />
+              )}
+            </div>
+            <p className="sr-only">{stage.srDescription}</p>
+
+            {/* Side shade, faded in on the timeline while the flowers orbit (desktop text columns). */}
+            <div
+              data-stage-shade
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 hidden opacity-0 md:block bg-[linear-gradient(90deg,rgb(46_10_33/0.72)_0%,rgb(46_10_33/0.25)_30%,transparent_40%,transparent_60%,rgb(46_10_33/0.25)_70%,rgb(46_10_33/0.72)_100%)]"
+            />
+
+            {/* Stronger prune gradient at the bottom on mobile, where the text sits. */}
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-prune via-prune/70 to-transparent md:hidden"
+            />
+
+            <Beat id="intro" className={INTRO_POSITION}>
+              <p data-intro-fade className="label">
+                {intro.label}
+              </p>
+              <h1
+                id="stage-title"
+                data-intro-title
+                className="mt-3 font-display text-5xl leading-none tracking-[0.12em] text-creme md:mt-5 md:text-7xl lg:text-8xl"
+              >
+                {intro.title}
+              </h1>
+              <span data-intro-fade className="rule mt-7 hidden w-12 md:block" aria-hidden="true" />
+              <p
+                data-intro-fade
+                className="mt-4 max-w-[22rem] text-base leading-relaxed text-creme/85 md:mt-6 md:text-lg"
+              >
+                {intro.text}
+              </p>
+              <p data-intro-fade className="label mt-6 !text-creme/70 motion-reduce:hidden md:mt-10">
+                {intro.hint} <span aria-hidden="true">↓</span>
+              </p>
+            </Beat>
           </div>
-          <p className="sr-only">{stage.srDescription}</p>
 
-          {/* Side shade, faded in on the timeline while the flowers orbit (desktop text columns). */}
-          <div
-            data-stage-shade
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 hidden opacity-0 md:block bg-[linear-gradient(90deg,rgb(46_10_33/0.72)_0%,rgb(46_10_33/0.25)_30%,transparent_40%,transparent_60%,rgb(46_10_33/0.25)_70%,rgb(46_10_33/0.72)_100%)]"
-          />
-
-          {/* Stronger prune gradient at the bottom on mobile, where the text sits. */}
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-prune via-prune/70 to-transparent md:hidden"
-          />
-
-          <Beat id="intro" className={INTRO_POSITION}>
-            <p data-intro-fade className="label">
-              {intro.label}
-            </p>
-            <h1
-              id="stage-title"
-              data-intro-title
-              className="mt-3 font-display text-5xl leading-none tracking-[0.12em] text-creme md:mt-5 md:text-7xl lg:text-8xl"
-            >
-              {intro.title}
-            </h1>
-            <span data-intro-fade className="rule mt-7 hidden w-12 md:block" aria-hidden="true" />
-            <p
-              data-intro-fade
-              className="mt-4 max-w-[22rem] text-base leading-relaxed text-creme/85 md:mt-6 md:text-lg"
-            >
-              {intro.text}
-            </p>
-            <p data-intro-fade className="label mt-6 !text-creme/70 motion-reduce:hidden md:mt-10">
-              {intro.hint} <span aria-hidden="true">↓</span>
-            </p>
-          </Beat>
-        </div>
-
-        {/* Beats 2–5: overlays while pinned, stacked blocks under reduced motion. */}
-        <div className="motion-safe:pointer-events-none motion-safe:absolute motion-safe:inset-0 motion-reduce:grid motion-reduce:gap-24 motion-reduce:px-6 motion-reduce:py-28 motion-reduce:md:grid-cols-2 motion-reduce:md:gap-x-[8vw] motion-reduce:md:px-[6vw] motion-reduce:md:py-40">
-          <Beat id="bloom" className={`${BEAT_POSITION} ${SIDE.right}`}>
-            <BeatHeading {...bloom} />
-          </Beat>
-          <Beat id="heart" className={`${BEAT_POSITION} ${SIDE.left}`}>
-            <BeatHeading {...heart} />
-          </Beat>
-          <Beat id="trail" className={`${BEAT_POSITION} ${SIDE.right}`}>
-            <BeatHeading {...trail} />
-          </Beat>
-          <Beat id="finish" className={`${BEAT_POSITION} ${SIDE.left}`}>
-            <BeatHeading {...finish} />
-            <a href={finish.cta.href} className="btn mt-9">
-              {finish.cta.label}
-            </a>
-          </Beat>
+          {/* Beats 2–5: overlays while pinned, stacked blocks under reduced motion. */}
+          <div className="motion-safe:pointer-events-none motion-safe:absolute motion-safe:inset-0 motion-reduce:grid motion-reduce:gap-24 motion-reduce:px-6 motion-reduce:py-28 motion-reduce:md:grid-cols-2 motion-reduce:md:gap-x-[8vw] motion-reduce:md:px-[6vw] motion-reduce:md:py-40">
+            <Beat id="bloom" className={`${BEAT_POSITION} ${SIDE.right}`}>
+              <BeatHeading {...bloom} />
+            </Beat>
+            <Beat id="heart" className={`${BEAT_POSITION} ${SIDE.left}`}>
+              <BeatHeading {...heart} />
+            </Beat>
+            <Beat id="trail" className={`${BEAT_POSITION} ${SIDE.right}`}>
+              <BeatHeading {...trail} />
+            </Beat>
+            <Beat id="finish" className={`${BEAT_POSITION} ${SIDE.left}`}>
+              <BeatHeading {...finish} />
+              <a href={finish.cta.href} className="btn mt-9">
+                {finish.cta.label}
+              </a>
+            </Beat>
+          </div>
         </div>
       </div>
     </section>
