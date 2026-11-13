@@ -1,4 +1,4 @@
-# ÉCLOSE — Eau de Parfum
+# VELOURS — Eau de Parfum
 
 A cinematic, scroll-driven single page for a fictional luxury perfume house. One pinned `<canvas>`
 plays a 192-frame WebP sequence scrubbed by scroll while real HTML text is choreographed over it.
@@ -42,7 +42,7 @@ automatically and the stage switches to it under `(max-width: 768px) and (orient
 
 1. Push the repository to GitHub and import it in Vercel. The defaults are correct
    (framework Next.js, `npm run build`, output `.next`).
-2. Optional: set `NEXT_PUBLIC_SITE_URL` to the final domain (for example `https://eclose.example`).
+2. Optional: set `NEXT_PUBLIC_SITE_URL` to the final domain (for example `https://velours.example`).
    Without it, Open Graph URLs use Vercel's production domain (`VERCEL_PROJECT_PRODUCTION_URL`).
 3. Frames are served with `Cache-Control: public, max-age=31536000, immutable` (see `next.config.ts`).
    If you ever replace frames, rename them or change the folder so browsers do not keep old copies.

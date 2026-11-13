@@ -2,10 +2,10 @@
 // Everything below is placeholder copy for a fictional perfume house.
 
 export const brand = {
-  name: "ÉCLOSE",
+  name: "VELOURS",
   descriptor: "Eau de Parfum",
   tagline: "Blooming in every note",
-  meaning: "French for “bloomed”",
+  meaning: "French for “velvet”",
 } as const;
 
 export const meta = {
@@ -90,10 +90,10 @@ export const story = {
   label: "The Story",
   title: "Made to open slowly",
   paragraphs: [
-    "ÉCLOSE began with a single question: what does a rose smell like in the moment it opens, before the petals fall?",
+    `${brand.name} began with a single question: what does a rose smell like in the moment it opens, before the petals fall?`,
     "We built the answer in layers. Pepper to wake the senses, a heart of three flowers, and a base that lingers like warmth on a wrist. Bottled in faceted rose glass, capped in gold.",
   ],
-  signature: "Maison ÉCLOSE, Paris",
+  signature: `Maison ${brand.name}, Paris`,
 } as const;
 
 // PLACEHOLDER PRODUCTS: names, prices and sizes are invented for this portfolio piece.

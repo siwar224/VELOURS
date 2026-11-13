@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* ÉCLOSE palette. Never pure white or pure black. */
+/* VELOURS palette. Never pure white or pure black. */
 :root {
   --prune: #2e0a21; /* main dark background, sampled from the frames */
   --bordeaux: #632042; /* lighter dark sections, glow */
