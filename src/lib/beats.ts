@@ -27,6 +27,12 @@ export const CUES = {
 /** Length of one text fade, in frames. */
 export const FADE = 8;
 
+/** Clean bottle, no flowers: the static hero for prefers-reduced-motion. */
+export const STATIC_FRAME = 176;
+
+/** Share of the sequence that must be decoded before the stage is revealed and scroll unlocks. */
+export const REVEAL_AT = 0.3;
+
 /** Scroll distance of the pinned stage, in viewport heights. */
 export const SCROLL_VH = { desktop: 4.25, mobile: 3 } as const;
 

@@ -27,6 +27,8 @@ export const nav = {
 
 // Text layers over the pinned canvas, one per beat (frame ranges live in src/lib/beats.ts).
 export const stage = {
+  loading: "Loading the bloom",
+  skipLink: "Skip the intro animation",
   srDescription:
     "A faceted rose-glass perfume bottle with a gold cap stands on a wine-coloured pedestal. Roses, peonies, violet petals and pink peppercorns bloom inside the glass, burst out and orbit the bottle, spiral into a trail of gold sparkles and a soft rose-gold mist, then clear to leave the bottle glinting in the light.",
   intro: {
