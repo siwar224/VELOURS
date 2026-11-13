@@ -1,0 +1,117 @@
+@import "tailwindcss";
+
+/* ÉCLOSE palette. Never pure white or pure black. */
+:root {
+  --prune: #2e0a21; /* main dark background, sampled from the frames */
+  --bordeaux: #632042; /* lighter dark sections, glow */
+  --rose: #d46479; /* accent: buttons, hovers, thin lines */
+  --champagne: #e2c07c; /* gold details: labels, icons, borders */
+  --creme: #f6ece6; /* light text on dark, light sections */
+  --nuit: #1a0513; /* footer, deepest dark */
+}
+
+/* Mirror the palette and fonts into Tailwind utilities (bg-prune, text-champagne, font-display…). */
+@theme inline {
+  --color-prune: var(--prune);
+  --color-bordeaux: var(--bordeaux);
+  --color-rose: var(--rose);
+  --color-champagne: var(--champagne);
+  --color-creme: var(--creme);
+  --color-nuit: var(--nuit);
+
+  --font-display: var(--font-bodoni), "Didot", "Bodoni 72", serif;
+  --font-sans: var(--font-jost), system-ui, sans-serif;
+
+  --tracking-label: 0.32em;
+  --tracking-wordmark: 0.38em;
+}
+
+html {
+  background: var(--prune);
+  color-scheme: dark;
+}
+
+body {
+  background: var(--prune);
+  color: var(--creme);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: clip;
+}
+
+::selection {
+  background: var(--rose);
+  color: var(--creme);
+}
+
+/* Visible champagne focus ring on every focusable control. */
+:focus-visible {
+  outline: 1px solid var(--champagne);
+  outline-offset: 4px;
+}
+
+@layer components {
+  /* Small uppercase Jost label in champagne with wide tracking. */
+  .label {
+    font-family: var(--font-sans);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+    color: var(--champagne);
+  }
+
+  /* Hairline champagne rule. */
+  .rule {
+    display: block;
+    height: 1px;
+    background: color-mix(in srgb, var(--champagne) 45%, transparent);
+  }
+
+  /* 1px champagne border, fills with rose on hover. */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75em;
+    padding: 0.95em 2em;
+    border: 1px solid var(--champagne);
+    border-radius: 999px;
+    font-family: var(--font-sans);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--creme);
+    background: transparent;
+    transition:
+      background-color 300ms ease,
+      border-color 300ms ease,
+      color 300ms ease;
+  }
+  .btn:hover {
+    background: var(--rose);
+    border-color: var(--rose);
+  }
+  .btn-dark {
+    color: var(--prune);
+    border-color: var(--prune);
+  }
+  .btn-dark:hover {
+    color: var(--creme);
+  }
+}
+
+/* Film grain + vignette, fixed over everything. Cheap: one SVG noise tile, no animation. */
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at center, transparent 55%, rgb(26 5 19 / 0.55) 100%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.96 0 0 0 0 0.92 0 0 0 0 0.9 0 0 0 0.5 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.09;
+  mix-blend-mode: overlay;
+}
