@@ -4,8 +4,8 @@ import Image from "next/image";
 import { useEffect, useRef, type ReactNode } from "react";
 import { stage } from "@/content/site";
 import framesJson from "@/data/frames.json";
-import { FRAMES, SCROLL_VH, frameTime } from "@/lib/beats";
-import { gsap, MOTION_QUERY } from "@/lib/gsap";
+import { CUES, FADE, FRAMES, PUSH_IN, SCROLL_VH, frameTime } from "@/lib/beats";
+import { gsap, MOTION_QUERY, SplitText } from "@/lib/gsap";
 import { createLenis } from "@/lib/lenis";
 import { CanvasSequence, type CanvasSequenceHandle, type FrameSet } from "./CanvasSequence";
 import { frameSrc } from "./FrameCrop";
@@ -49,6 +49,76 @@ function BeatHeading({ label, title, text }: { label: string; title: string; tex
   );
 }
 
+type StageTimelineOptions = {
+  root: HTMLElement;
+  viewport: HTMLElement;
+  media: HTMLElement;
+  setFrame: (frame: number) => void;
+  count: number;
+  mobile: boolean;
+};
+
+/**
+ * The single scrubbed timeline of the stage. Its unit is the frame: 1 unit of duration = 1 frame
+ * of footage, so every text cue is positioned by frame number and stays in sync with the canvas
+ * in both scroll directions. ScrollTrigger maps the whole timeline onto the pinned scroll distance.
+ */
+function buildStageTimeline({ root, viewport, media, setFrame, count, mobile }: StageTimelineOptions) {
+  const last = count - 1;
+  const at = (frame: number) => frameTime(frame, count);
+  const state = { frame: 0 };
+
+  const tl = gsap.timeline({
+    defaults: { ease: "none" },
+    scrollTrigger: {
+      trigger: viewport,
+      start: "top top",
+      end: () => `+=${window.innerHeight * (mobile ? SCROLL_VH.mobile : SCROLL_VH.desktop)}`,
+      pin: true,
+      scrub: 0.5,
+      anticipatePin: 1,
+      invalidateOnRefresh: true,
+      refreshPriority: 1, // measure the pin first: every section below depends on its spacing
+    },
+  });
+
+  (Object.keys(FRAMES) as (keyof typeof FRAMES)[]).forEach((name) => tl.addLabel(name, at(FRAMES[name])));
+
+  // Frame index: a plain object tweened linearly; the canvas only redraws on a new integer.
+  tl.to(state, { frame: last, duration: last, onUpdate: () => setFrame(state.frame) }, 0);
+
+  // Background: darken the sides while the petals orbit, so the text columns stay readable.
+  tl.fromTo("[data-stage-shade]", { opacity: 0 }, { opacity: 1, duration: FADE * 2 }, at(CUES.shade.in));
+  tl.to("[data-stage-shade]", { opacity: 0.4, duration: FADE * 3 }, at(CUES.shade.out));
+
+  // Text layers.
+  tl.to("[data-beat='intro']", { opacity: 0, y: -32, duration: FADE, ease: "power1.in" }, at(CUES.intro.out));
+
+  (["bloom", "heart", "trail", "finish"] as const).forEach((id) => {
+    const cue: { in: number; out?: number } = CUES[id];
+    const beat = `[data-beat='${id}']`;
+    const title = root.querySelector(`${beat} h2`);
+    const words = title ? SplitText.create(title, { type: "words", mask: "words" }).words : [];
+
+    tl.fromTo(beat, { opacity: 0, y: 32 }, { opacity: 1, y: 0, duration: FADE, ease: "power2.out" }, at(cue.in));
+    if (words.length) {
+      tl.from(words, { yPercent: 110, duration: FADE, stagger: 0.6, ease: "power3.out" }, at(cue.in));
+    }
+    if (cue.out !== undefined) {
+      tl.to(beat, { opacity: 0, y: -32, duration: FADE, ease: "power1.in" }, at(cue.out));
+    }
+  });
+
+  // The finish CTA must not be focusable while invisible: autoAlpha toggles visibility too.
+  tl.fromTo("[data-beat='finish'] a", { autoAlpha: 0 }, { autoAlpha: 1, duration: FADE }, at(CUES.finish.in));
+
+  // Closing push-in on the bottle after the last frame, then the stage unpins.
+  // Origin 50% 55% ≈ the middle of the bottle in the frame.
+  tl.to(media, { scale: 1.12, transformOrigin: "50% 55%", duration: PUSH_IN, ease: "power1.inOut" }, last);
+
+  return tl;
+}
+
 export function ScrollStage() {
   const { intro, bloom, heart, trail, finish } = stage;
   const rootRef = useRef<HTMLElement>(null);
@@ -60,44 +130,34 @@ export function ScrollStage() {
 
   useEffect(() => {
     // gsap.matchMedia is a gsap.context per media condition: everything created inside
-    // (tweens, ScrollTriggers, pins) is reverted on cleanup, which keeps Strict Mode safe.
+    // (tweens, ScrollTriggers, pins, SplitText) is reverted on cleanup, which keeps Strict Mode safe.
     const mm = gsap.matchMedia(rootRef);
+    let cancelled = false;
 
-    mm.add({ motion: MOTION_QUERY, mobile: "(max-width: 768px)" }, (context) => {
-      const { motion, mobile } = context.conditions as { motion: boolean; mobile: boolean };
-      if (!motion) return;
+    // SplitText measures glyphs, so wait for the web fonts before building anything.
+    document.fonts.ready.then(() => {
+      if (cancelled) return;
+      mm.add({ motion: MOTION_QUERY, mobile: "(max-width: 768px)" }, (context) => {
+        const { motion, mobile } = context.conditions as { motion: boolean; mobile: boolean };
+        if (!motion) return; // reduced motion: no Lenis, no pin, no scrub
 
-      const { destroy } = createLenis();
-
-      // The timeline is measured in frames: 1 unit of duration = 1 frame of footage.
-      // ScrollTrigger maps the whole timeline onto the pinned scroll distance.
-      const last = count - 1;
-      const at = (frame: number) => frameTime(frame, count);
-      const state = { frame: 0 };
-
-      const tl = gsap.timeline({
-        defaults: { ease: "none" },
-        scrollTrigger: {
-          trigger: viewportRef.current,
-          start: "top top",
-          end: () => `+=${window.innerHeight * (mobile ? SCROLL_VH.mobile : SCROLL_VH.desktop)}`,
-          pin: true,
-          scrub: 0.5,
-          anticipatePin: 1,
-          invalidateOnRefresh: true,
-          refreshPriority: 1, // measure the pin first: every section below depends on its spacing
-        },
+        const { destroy } = createLenis();
+        buildStageTimeline({
+          root: rootRef.current!,
+          viewport: viewportRef.current!,
+          media: mediaRef.current!,
+          setFrame: (frame) => canvasRef.current?.setFrame(frame),
+          count,
+          mobile,
+        });
+        return () => destroy();
       });
-
-      (Object.keys(FRAMES) as (keyof typeof FRAMES)[]).forEach((name) => tl.addLabel(name, at(FRAMES[name])));
-
-      // Frame index: a plain object tweened linearly; the canvas only redraws on a new integer.
-      tl.to(state, { frame: last, duration: last, onUpdate: () => canvasRef.current?.setFrame(state.frame) }, 0);
-
-      return () => destroy();
     });
 
-    return () => mm.revert();
+    return () => {
+      cancelled = true;
+      mm.revert();
+    };
   }, [count]);
 
   return (
@@ -118,6 +178,13 @@ export function ScrollStage() {
           <CanvasSequence ref={canvasRef} set={frameSet} className="absolute inset-0 h-full w-full" />
         </div>
         <p className="sr-only">{stage.srDescription}</p>
+
+        {/* Side shade, faded in on the timeline while the flowers orbit (desktop text columns). */}
+        <div
+          data-stage-shade
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 hidden opacity-0 md:block bg-[linear-gradient(90deg,rgb(46_10_33/0.72)_0%,rgb(46_10_33/0.25)_30%,transparent_40%,transparent_60%,rgb(46_10_33/0.25)_70%,rgb(46_10_33/0.72)_100%)]"
+        />
 
         {/* Stronger prune gradient at the bottom on mobile, where the text sits. */}
         <div

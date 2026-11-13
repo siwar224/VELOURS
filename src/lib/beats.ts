@@ -11,6 +11,22 @@ export const FRAMES = {
   glint: 170, // clean bottle, glint of light
 } as const;
 
+/**
+ * When each text layer enters / leaves, in frames. Texts arrive a few frames after their beat
+ * starts and leave before the next one, so two layers never overlap.
+ */
+export const CUES = {
+  intro: { out: FRAMES.bloom - 6 }, // fades as the flowers appear
+  bloom: { in: FRAMES.bloom + 4, out: 54 }, // slides in as the flowers burst
+  heart: { in: 64, out: FRAMES.spiral - 2 },
+  trail: { in: FRAMES.mist + 2, out: FRAMES.clear - 8 },
+  finish: { in: FRAMES.clear + 8 }, // stays until the stage unpins
+  shade: { in: FRAMES.peak - 8, out: FRAMES.clear }, // side darkening behind the orbit
+} as const;
+
+/** Length of one text fade, in frames. */
+export const FADE = 8;
+
 /** Scroll distance of the pinned stage, in viewport heights. */
 export const SCROLL_VH = { desktop: 4.25, mobile: 3 } as const;
 
