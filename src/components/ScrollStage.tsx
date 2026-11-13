@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type Lenis from "lenis";
 import { stage } from "@/content/site";
 import framesJson from "@/data/frames.json";
-import { CUES, FADE, FRAMES, PUSH_IN, REVEAL_AT, SCROLL_VH, STATIC_FRAME, frameTime } from "@/lib/beats";
+import { FRAMES, PUSH_IN, REVEAL_AT, SHADE, STATIC_FRAME, TEXT_AT, frameProgress, frameTime } from "@/lib/beats";
 import { gsap, MOTION_QUERY, ScrollTrigger, SplitText } from "@/lib/gsap";
 import { createLenis } from "@/lib/lenis";
 import { CanvasSequence, type CanvasSequenceHandle, type FrameSet } from "./CanvasSequence";
@@ -17,27 +17,44 @@ const desktopSet: FrameSet = { count: manifest.count, pattern: manifest.pattern,
 const MOBILE_PORTRAIT = "(max-width: 768px) and (orientation: portrait)";
 const LOAD_TIMEOUT_MS = 8000; // never keep scroll locked longer than this, even on a bad network
 
-type Side = "left" | "right";
-
 /*
- * Text layers over the stage.
- * Motion: absolutely positioned over the pinned canvas. Desktop: a column of at most ~28% of the
- * viewport on one side, so the bottle (centre ~15% of the frame) stays clear. Mobile: bottom third.
- * Reduced motion: beats 2–5 become normal stacked blocks under a static hero.
+ * Layout of the stage (motion):
+ *   section height = 100svh + --stage-distance (300svh mobile, 425svh desktop)
+ *   ├─ sticky viewport (100svh): poster + canvas, frames scrubbed by scroll progress
+ *   └─ text track (absolute, full height): text blocks scroll up over the canvas like page content.
+ * A block with progress --p sits at  --p × stage-distance + --beat-y  in the section, so it crosses
+ * its resting line (--beat-y: 50svh desktop, 76svh mobile) exactly when its frame is on screen.
+ * Reduced motion: no sticky, a static hero, and beats 2–5 stacked below it.
  * (Class strings are written out in full so Tailwind can see them.)
  */
+const SECTION =
+  "relative [--stage-distance:300svh] [--beat-y:76svh] md:[--stage-distance:425svh] md:[--beat-y:50svh] motion-safe:h-[calc(100svh_+_var(--stage-distance))]";
 const INTRO_POSITION =
-  "absolute inset-x-6 bottom-[5svh] md:inset-x-auto md:top-1/2 md:bottom-auto md:left-[6vw] md:w-[min(28vw,26rem)] md:-translate-y-1/2 md:items-start md:text-left";
+  "absolute inset-x-6 top-[var(--beat-y)] -translate-y-1/2 md:inset-x-auto md:left-[6vw] md:w-[min(28vw,26rem)] md:items-start md:text-left";
 const BEAT_POSITION =
-  "relative motion-safe:absolute motion-safe:inset-x-6 motion-safe:bottom-[5svh] motion-safe:opacity-0 motion-safe:md:inset-x-auto motion-safe:md:top-1/2 motion-safe:md:bottom-auto motion-safe:md:w-[min(28vw,26rem)] motion-safe:md:-translate-y-1/2 motion-reduce:md:items-start motion-reduce:md:text-left";
-const SIDE: Record<Side, string> = {
+  "relative motion-safe:absolute motion-safe:inset-x-6 motion-safe:top-[calc(var(--p)_*_var(--stage-distance)_+_var(--beat-y))] motion-safe:-translate-y-1/2 motion-safe:md:inset-x-auto motion-safe:md:w-[min(28vw,26rem)] motion-reduce:md:items-start motion-reduce:md:text-left";
+const SIDE = {
   left: "motion-safe:md:left-[6vw] motion-safe:md:items-start motion-safe:md:text-left",
   right: "motion-safe:md:right-[6vw] motion-safe:md:items-end motion-safe:md:text-right",
-};
+} as const;
 
-function Beat({ id, className, children }: { id: string; className: string; children: ReactNode }) {
+function Beat({
+  id,
+  className,
+  style,
+  children,
+}: {
+  id: string;
+  className: string;
+  style?: CSSProperties;
+  children: ReactNode;
+}) {
   return (
-    <div data-beat={id} className={`pointer-events-auto isolate flex flex-col items-center text-center ${className}`}>
+    <div
+      data-beat={id}
+      style={style}
+      className={`pointer-events-auto isolate flex flex-col items-center text-center ${className}`}
+    >
       {/* Soft local prune gradient for contrast over the flower orbit (kept behind the text by `isolate`). */}
       <div
         aria-hidden="true"
@@ -59,9 +76,8 @@ function BeatHeading({ label, title, text }: { label: string; title: string; tex
   );
 }
 
-type StageTimelineOptions = {
+type StageMotionOptions = {
   root: HTMLElement;
-  viewport: HTMLElement;
   media: HTMLElement;
   setFrame: (frame: number) => void;
   count: number;
@@ -69,64 +85,60 @@ type StageTimelineOptions = {
 };
 
 /**
- * The single scrubbed timeline of the stage. Its unit is the frame: 1 unit of duration = 1 frame
- * of footage, so every text cue is positioned by frame number and stays in sync with the canvas
- * in both scroll directions. ScrollTrigger maps the whole timeline onto the pinned scroll distance.
+ * 1. The frame timeline, in frame units (1 unit = 1 frame), scrubbed across the whole section.
+ *    The canvas only redraws on a new integer frame.
+ * 2. The text blocks move with the native scroll; they only fade at the edges of the screen
+ *    and reveal their headline words as they come up.
  */
-function buildStageTimeline({ root, viewport, media, setFrame, count, mobile }: StageTimelineOptions) {
+function buildStageMotion({ root, media, setFrame, count, mobile }: StageMotionOptions) {
   const last = count - 1;
   const at = (frame: number) => frameTime(frame, count);
   const state = { frame: 0 };
 
   const tl = gsap.timeline({
     defaults: { ease: "none" },
-    scrollTrigger: {
-      trigger: viewport,
-      start: "top top",
-      end: () => `+=${window.innerHeight * (mobile ? SCROLL_VH.mobile : SCROLL_VH.desktop)}`,
-      pin: true,
-      scrub: 0.5,
-      anticipatePin: 1,
-      invalidateOnRefresh: true,
-      refreshPriority: 1, // measure the pin first: every section below depends on its spacing
-    },
+    scrollTrigger: { trigger: root, start: "top top", end: "bottom bottom", scrub: 0.5, invalidateOnRefresh: true },
   });
-
   (Object.keys(FRAMES) as (keyof typeof FRAMES)[]).forEach((name) => tl.addLabel(name, at(FRAMES[name])));
-
-  // Frame index: a plain object tweened linearly; the canvas only redraws on a new integer.
   tl.to(state, { frame: last, duration: last, onUpdate: () => setFrame(state.frame) }, 0);
 
   // Background: darken the sides while the petals orbit, so the text columns stay readable.
-  tl.fromTo("[data-stage-shade]", { opacity: 0 }, { opacity: 1, duration: FADE * 2 }, at(CUES.shade.in));
-  tl.to("[data-stage-shade]", { opacity: 0.4, duration: FADE * 3 }, at(CUES.shade.out));
+  tl.fromTo("[data-stage-shade]", { opacity: 0 }, { opacity: 1, duration: 16 }, at(SHADE.in));
+  tl.to("[data-stage-shade]", { opacity: 0.4, duration: 24 }, at(SHADE.out));
 
-  // Text layers.
-  tl.to("[data-beat='intro']", { opacity: 0, y: -32, duration: FADE, ease: "power1.in" }, at(CUES.intro.out));
-
-  (["bloom", "heart", "trail", "finish"] as const).forEach((id) => {
-    const cue: { in: number; out?: number } = CUES[id];
-    const beat = `[data-beat='${id}']`;
-    const title = root.querySelector(`${beat} h2`);
-    const words = title ? SplitText.create(title, { type: "words", mask: "words" }).words : [];
-
-    tl.fromTo(beat, { opacity: 0, y: 32 }, { opacity: 1, y: 0, duration: FADE, ease: "power2.out" }, at(cue.in));
-    if (words.length) {
-      tl.from(words, { yPercent: 110, duration: FADE, stagger: 0.6, ease: "power3.out" }, at(cue.in));
-    }
-    if (cue.out !== undefined) {
-      tl.to(beat, { opacity: 0, y: -32, duration: FADE, ease: "power1.in" }, at(cue.out));
-    }
-  });
-
-  // The finish CTA must not be focusable while invisible: autoAlpha toggles visibility too.
-  tl.fromTo("[data-beat='finish'] a", { autoAlpha: 0 }, { autoAlpha: 1, duration: FADE }, at(CUES.finish.in));
-
-  // Closing push-in on the bottle after the last frame, then the stage unpins.
-  // Origin 50% 55% ≈ the middle of the bottle in the frame.
+  // Closing push-in on the bottle after the last frame (origin ≈ the middle of the bottle).
   tl.to(media, { scale: 1.12, transformOrigin: "50% 55%", duration: PUSH_IN, ease: "power1.inOut" }, last);
 
-  return tl;
+  // On mobile the text rises through the bottle area, so it fades out sooner.
+  const fadeOutEnd = mobile ? "bottom 40%" : "bottom top";
+
+  // Intro: already on screen at load; fades as it scrolls up.
+  gsap.to("[data-beat='intro']", {
+    opacity: 0,
+    ease: "none",
+    scrollTrigger: { start: 0, end: () => window.innerHeight * (mobile ? 0.35 : 0.6), scrub: true },
+  });
+
+  root.querySelectorAll<HTMLElement>("[data-beat]:not([data-beat='intro'])").forEach((beat) => {
+    // Fade in from the bottom edge, hold, fade out towards the top edge.
+    gsap
+      .timeline({ scrollTrigger: { trigger: beat, start: "top bottom", end: fadeOutEnd, scrub: true } })
+      .fromTo(beat, { opacity: 0 }, { opacity: 1, duration: 1, ease: "none" })
+      .to(beat, { opacity: 1, duration: 1.2 })
+      .to(beat, { opacity: 0, duration: 1, ease: "none" });
+
+    const title = beat.querySelector("h2");
+    if (title) {
+      const { words } = SplitText.create(title, { type: "words", mask: "words" });
+      gsap.from(words, {
+        yPercent: 110,
+        duration: 1,
+        stagger: 0.08,
+        ease: "power3.out",
+        scrollTrigger: { trigger: beat, start: "top 85%", toggleActions: "play none none reverse" },
+      });
+    }
+  });
 }
 
 /** One-off entrance of the intro text, played when the first frames are ready. */
@@ -141,7 +153,6 @@ function buildIntroReveal() {
 export function ScrollStage() {
   const { intro, bloom, heart, trail, finish } = stage;
   const rootRef = useRef<HTMLElement>(null);
-  const viewportRef = useRef<HTMLDivElement>(null);
   const mediaRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<CanvasSequenceHandle>(null);
   const lenisRef = useRef<Lenis | null>(null);
@@ -153,6 +164,9 @@ export function ScrollStage() {
   const [progress, setProgress] = useState(0);
   const [ready, setReady] = useState(false);
   const count = frameSet.count;
+
+  // Where each text block sits in the scroll, derived from the frame it belongs to.
+  const place = (frame: number): CSSProperties => ({ "--p": frameProgress(frame, count) }) as CSSProperties;
 
   // Media preferences: animation on/off, and which frame set to stream.
   useEffect(() => {
@@ -204,7 +218,7 @@ export function ScrollStage() {
 
   useEffect(() => {
     // gsap.matchMedia is a gsap.context per media condition: everything created inside
-    // (tweens, ScrollTriggers, pins, SplitText) is reverted on cleanup, which keeps Strict Mode safe.
+    // (tweens, ScrollTriggers, SplitText) is reverted on cleanup, which keeps Strict Mode safe.
     const mm = gsap.matchMedia(rootRef);
     let cancelled = false;
 
@@ -213,7 +227,7 @@ export function ScrollStage() {
       if (cancelled) return;
       mm.add({ motion: MOTION_QUERY, mobile: "(max-width: 768px)" }, (context) => {
         const { motion, mobile } = context.conditions as { motion: boolean; mobile: boolean };
-        if (!motion) return; // reduced motion: no Lenis, no pin, no scrub, static stacked layout
+        if (!motion) return; // reduced motion: no Lenis, no scrub, static stacked layout
 
         const { lenis, destroy } = createLenis();
         lenisRef.current = lenis;
@@ -222,9 +236,8 @@ export function ScrollStage() {
         if (readyRef.current) introRef.current.play();
         else lenis.stop(); // hold scroll until the first frames are decoded
 
-        buildStageTimeline({
+        buildStageMotion({
           root: rootRef.current!,
-          viewport: viewportRef.current!,
           media: mediaRef.current!,
           setFrame: (frame) => canvasRef.current?.setFrame(frame),
           count,
@@ -247,93 +260,91 @@ export function ScrollStage() {
   }, [count]);
 
   return (
-    <section id="top" ref={rootRef} aria-labelledby="stage-title" className="relative">
+    <section id="top" ref={rootRef} aria-labelledby="stage-title" className={SECTION}>
       {motionOk && <Preloader progress={progress} done={ready} />}
 
-      <div ref={viewportRef} className="relative overflow-hidden bg-prune motion-safe:h-svh">
-        {/* Hero: always exactly one viewport tall. */}
-        <div className="relative h-svh">
-          <div ref={mediaRef} className="absolute inset-0">
-            {/* LCP poster (first frame), swapped for the clean-bottle frame under reduced motion.
-                Same cover fit and centre focal point as the canvas, so the hand-over is invisible. */}
-            <picture>
-              <source media="(prefers-reduced-motion: reduce)" srcSet={frameSrc(STATIC_FRAME)} />
-              <img
-                src={frameSrc(1)}
-                alt=""
-                width={1920}
-                height={1080}
-                fetchPriority="high"
-                decoding="async"
-                className="absolute inset-0 h-full w-full object-cover object-center"
-              />
-            </picture>
-            {motionOk && (
-              <CanvasSequence
-                ref={canvasRef}
-                set={frameSet}
-                onProgress={onProgress}
-                className="absolute inset-0 h-full w-full"
-              />
-            )}
-          </div>
-          <p className="sr-only">{stage.srDescription}</p>
-
-          {/* Side shade, faded in on the timeline while the flowers orbit (desktop text columns). */}
-          <div
-            data-stage-shade
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 hidden opacity-0 md:block bg-[linear-gradient(90deg,rgb(46_10_33/0.72)_0%,rgb(46_10_33/0.25)_30%,transparent_40%,transparent_60%,rgb(46_10_33/0.25)_70%,rgb(46_10_33/0.72)_100%)]"
-          />
-
-          {/* Stronger prune gradient at the bottom on mobile, where the text sits. */}
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-prune via-prune/70 to-transparent md:hidden"
-          />
-
-          <Beat id="intro" className={INTRO_POSITION}>
-            <p data-intro-fade className="label">
-              {intro.label}
-            </p>
-            <h1
-              id="stage-title"
-              data-intro-title
-              className="mt-3 font-display text-5xl leading-none tracking-[0.12em] text-creme md:mt-5 md:text-7xl lg:text-8xl"
-            >
-              {intro.title}
-            </h1>
-            <span data-intro-fade className="rule mt-7 hidden w-12 md:block" aria-hidden="true" />
-            <p
-              data-intro-fade
-              className="mt-4 max-w-[22rem] text-base leading-relaxed text-creme/85 md:mt-6 md:text-lg"
-            >
-              {intro.text}
-            </p>
-            <p data-intro-fade className="label mt-6 !text-creme/70 motion-reduce:hidden md:mt-10">
-              {intro.hint} <span aria-hidden="true">↓</span>
-            </p>
-          </Beat>
+      {/* Sticky viewport: stays on screen for the whole stage while the frames change. */}
+      <div className="relative h-svh overflow-hidden bg-prune motion-safe:sticky motion-safe:top-0">
+        <div ref={mediaRef} className="absolute inset-0">
+          {/* LCP poster (first frame), swapped for the clean-bottle frame under reduced motion.
+              Same cover fit and centre focal point as the canvas, so the hand-over is invisible. */}
+          <picture>
+            <source media="(prefers-reduced-motion: reduce)" srcSet={frameSrc(STATIC_FRAME)} />
+            <img
+              src={frameSrc(1)}
+              alt=""
+              width={1920}
+              height={1080}
+              fetchPriority="high"
+              decoding="async"
+              className="absolute inset-0 h-full w-full object-cover object-center"
+            />
+          </picture>
+          {motionOk && (
+            <CanvasSequence
+              ref={canvasRef}
+              set={frameSet}
+              onProgress={onProgress}
+              className="absolute inset-0 h-full w-full"
+            />
+          )}
         </div>
+        <p className="sr-only">{stage.srDescription}</p>
 
-        {/* Beats 2–5: overlays while pinned, stacked blocks under reduced motion. */}
-        <div className="motion-safe:pointer-events-none motion-safe:absolute motion-safe:inset-0 motion-reduce:grid motion-reduce:gap-24 motion-reduce:px-6 motion-reduce:py-28 motion-reduce:md:grid-cols-2 motion-reduce:md:gap-x-[8vw] motion-reduce:md:px-[6vw] motion-reduce:md:py-40">
-          <Beat id="bloom" className={`${BEAT_POSITION} ${SIDE.right}`}>
-            <BeatHeading {...bloom} />
-          </Beat>
-          <Beat id="heart" className={`${BEAT_POSITION} ${SIDE.left}`}>
-            <BeatHeading {...heart} />
-          </Beat>
-          <Beat id="trail" className={`${BEAT_POSITION} ${SIDE.right}`}>
-            <BeatHeading {...trail} />
-          </Beat>
-          <Beat id="finish" className={`${BEAT_POSITION} ${SIDE.left}`}>
-            <BeatHeading {...finish} />
-            <a href={finish.cta.href} className="btn mt-9">
-              {finish.cta.label}
-            </a>
-          </Beat>
-        </div>
+        {/* Side shade, faded in on the timeline while the flowers orbit (desktop text columns). */}
+        <div
+          data-stage-shade
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 hidden opacity-0 md:block bg-[linear-gradient(90deg,rgb(46_10_33/0.72)_0%,rgb(46_10_33/0.25)_30%,transparent_40%,transparent_60%,rgb(46_10_33/0.25)_70%,rgb(46_10_33/0.72)_100%)]"
+        />
+
+        {/* Stronger prune gradient at the bottom on mobile, where the text sits. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-prune via-prune/70 to-transparent md:hidden"
+        />
+      </div>
+
+      <Beat id="intro" className={INTRO_POSITION}>
+        <p data-intro-fade className="label">
+          {intro.label}
+        </p>
+        <h1
+          id="stage-title"
+          data-intro-title
+          className="mt-3 font-display text-5xl leading-none tracking-[0.12em] text-creme md:mt-5 md:text-7xl lg:text-8xl"
+        >
+          {intro.title}
+        </h1>
+        <span data-intro-fade className="rule mt-7 hidden w-12 md:block" aria-hidden="true" />
+        <p
+          data-intro-fade
+          className="mt-4 max-w-[22rem] text-base leading-relaxed text-creme/85 md:mt-6 md:text-lg"
+        >
+          {intro.text}
+        </p>
+        <p data-intro-fade className="label mt-6 !text-creme/70 motion-reduce:hidden md:mt-10">
+          {intro.hint} <span aria-hidden="true">↓</span>
+        </p>
+      </Beat>
+
+      {/* Beats 2–5: scroll over the sticky canvas; stacked blocks under reduced motion. */}
+      <div className="motion-safe:pointer-events-none motion-safe:absolute motion-safe:inset-0 motion-reduce:grid motion-reduce:gap-24 motion-reduce:px-6 motion-reduce:py-28 motion-reduce:md:grid-cols-2 motion-reduce:md:gap-x-[8vw] motion-reduce:md:px-[6vw] motion-reduce:md:py-40">
+        <Beat id="bloom" className={`${BEAT_POSITION} ${SIDE.right}`} style={place(TEXT_AT.bloom)}>
+          <BeatHeading {...bloom} />
+        </Beat>
+        <Beat id="heart" className={`${BEAT_POSITION} ${SIDE.left}`} style={place(TEXT_AT.heart)}>
+          <BeatHeading {...heart} />
+        </Beat>
+        <Beat id="trail" className={`${BEAT_POSITION} ${SIDE.right}`} style={place(TEXT_AT.trail)}>
+          <BeatHeading {...trail} />
+        </Beat>
+        <Beat id="finish" className={`${BEAT_POSITION} ${SIDE.left}`} style={place(TEXT_AT.finish)}>
+          <BeatHeading {...finish} />
+          <a href={finish.cta.href} className="btn mt-9">
+            {finish.cta.label}
+          </a>
+        </Beat>
       </div>
     </section>
   );

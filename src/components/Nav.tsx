@@ -13,7 +13,7 @@ export function Nav() {
       trigger: "#top",
       start: "bottom top+=80", // the stage's bottom edge reaches the bar
       end: "max",
-      refreshPriority: -1, // measured after the stage pin has added its spacing
+      refreshPriority: -1, // measured after the stage's own triggers
       onToggle: (self) => setSolid(self.isActive),
     });
     return () => trigger.kill();

@@ -1,7 +1,7 @@
 # ÉCLOSE — Eau de Parfum
 
-A cinematic, scroll-driven single page for a fictional luxury perfume house. One pinned `<canvas>`
-plays a 192-frame WebP sequence scrubbed by scroll while real HTML text is choreographed over it.
+A cinematic, scroll-driven single page for a fictional luxury perfume house. One sticky `<canvas>`
+plays a 192-frame WebP sequence scrubbed by scroll while real HTML text scrolls up over it.
 
 Frontend only: no backend, no real products, no checkout.
 
@@ -28,12 +28,12 @@ and writes `src/data/frames.json`. Never hard-code the frame count.
 | File | Role |
 | --- | --- |
 | `src/components/CanvasSequence.tsx` | Canvas sized to viewport × DPR (max 2), focal-point cover fit, preload (30 frames first, the rest in idle batches), draws the nearest loaded frame, redraws only on a new frame index |
-| `src/components/ScrollStage.tsx` | One GSAP timeline in frame units, pinned and scrubbed (`scrub: 0.5`); text, side shade and push-in are positioned by frame number |
-| `src/lib/beats.ts` | All beat frames, text cues, scroll distance (425vh desktop, 300vh mobile) |
+| `src/components/ScrollStage.tsx` | Sticky canvas inside a tall section (100svh + 425svh desktop / 300svh mobile). One GSAP timeline in frame units scrubbed across the section (`scrub: 0.5`) drives frames, side shade and push-in. Text blocks scroll with the page; each is placed at the scroll point where its frame is on screen |
+| `src/lib/beats.ts` | All beat frames and the frame each text block belongs to (`TEXT_AT`) |
 | `src/lib/lenis.ts` | Lenis on GSAP's ticker, `ScrollTrigger.update` on scroll |
 | `src/content/site.ts` | Every piece of copy; rename the brand here |
 
-Reduced motion: no Lenis, pin or scrub; a static hero (`f_0176`, clean bottle) and stacked sections.
+Reduced motion: no Lenis, sticky stage or scrub; a static hero (`f_0176`, clean bottle) and stacked sections.
 
 Portrait frames (later): add `public/frames/mobile/f_0001.webp …`. The manifest picks the set up
 automatically and the stage switches to it under `(max-width: 768px) and (orientation: portrait)`.
